@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Manajemen Produksi Cetak Mushaf</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e40af',
+                        secondary: '#0f766e',
+                        warning: '#d97706',
+                        danger: '#dc2626',
+                        info: '#0891b2',
+                        waiting: '#6b7280',
+                        process: '#2563eb',
+                        done: '#16a34a',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .btn {
+                @apply px-3 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm;
+            }
+            .btn-primary { @apply bg-primary text-white hover:bg-primary/90; }
+            .btn-success { @apply bg-done text-white hover:bg-done/90; }
+            .btn-warning { @apply bg-warning text-white hover:bg-warning/90; }
+            .btn-danger { @apply bg-danger text-white hover:bg-danger/90; }
+            .btn-info { @apply bg-info text-white hover:bg-info/90; }
+            .btn-secondary { @apply bg-secondary text-white hover:bg-secondary/90; }
+            .btn-sm { @apply px-2 py-1 text-sm; }
+            .btn-lg { @apply px-4 py-3 text-base; }
+            .card {
+                @apply bg-white rounded-xl shadow-md p-4 mb-4 border border-gray-100;
+            }
+            .form-input {
+                @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary;
+            }
+            .label {
+                @apply block text-sm font-medium text-gray-700 mb-1;
+            }
+            .badge {
+                @apply text-xs font-semibold px-2 py-0.5 rounded-full text-white;
+            }
+            .sidebar-link {
+                @apply flex items-center gap-2 px-3 py-2.5 rounded-lg mb-1 hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer;
+            }
+            .sidebar-link.active {
+                @apply bg-primary/10 text-primary font-medium;
+            }
+            .stage-card {
+                @apply border rounded-lg p-3 transition-all;
+            }
+            .stage-locked {
+                @apply bg-gray-100 border-gray-200 opacity-70;
+            }
+            .stage-waiting {
+                @apply bg-gray-50 border-waiting/50;
+            }
+            .stage-process {
+                @apply bg-blue-50 border-process/50;
+            }
+            .stage-done {
+                @apply bg-green-50 border-done/50;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 min-h-screen">
+    <div id="app" class="flex flex-col md:flex-row min-h-screen">
+        <!-- Sidebar / Menu -->
+        <aside id="sidebar" class="w-full md:w-64 bg-white shadow-md z-20 transition-all">
+            <div class="p-4 border-b border-gray-200">
+                <h1 class="text-lg font-bold text-primary">📖 Produksi Mushaf</h1>
+                <p class="text-sm text-gray-500" id="userInfo">Belum masuk</p>
+            </div>
+            <nav class="p-3" id="mainMenu"></nav>
+        </aside>
+
+        <!-- Konten Utama -->
+        <main class="flex-1 p-4 md:p-6 overflow-auto">
+            <!-- Halaman Login -->
+            <div id="pageLogin" class="max-w-md mx-auto mt-10">
+                <div class="card">
+                    <h2 class="text-xl font-bold text-center mb-6 text-primary">🔐 Masuk Aplikasi</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="label">Nama Pengguna</label>
+                            <input type="text" id="username" class="form-input" placeholder="Ketik nama pengguna...">
+                        </div>
+                        <div>
+                            <label class="label">Kata Sandi</label>
+                            <input type="password" id="password" class="form-input" placeholder="Ketik kata sandi...">
+                        </div>
+                        <button onclick="login()" class="btn btn-primary w-full btn-lg mt-2">Masuk Aplikasi</button>
+                        <div class="text-sm text-gray-500 mt-3 bg-blue-50 p-3 rounded-lg">
+                            <p class="font-semibold">🔑 Akun Masuk:</p>
+                            <p><strong>Admin:</strong> admin / admin123</p>
+                            <p><strong>Operator:</strong> op1 s.d. op13 / sandi: op12345</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Halaman Daftar Pesanan -->
+            <div id="pageOrders" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-primary">📦 Data Pesanan</h2>
+                    <button onclick="showOrderForm()" class="btn btn-primary">+ Tambah Pesanan</button>
+                </div>
+                <div id="orderList" class="space-y-3"></div>
+            </div>
+
+            <!-- Halaman Form Pesanan -->
+            <div id="pageOrderForm" class="hidden max-w-2xl mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="orderFormTitle" class="text-xl font-bold text-primary">Tambah Pesanan Baru</h2>
+                    <button onclick="showPage('orders')" class="btn btn-secondary btn-sm">← Kembali</button>
+                </div>
+                <div class="card space-y-3">
+                    <input type="hidden" id="editOrderId">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div><label class="label">Nomor Pesanan</label><input type="text" id="orderNo" class="form-input"></div>
+                        <div><label class="label">Nama Pemesan</label><input type="text" id="orderClient" class="form-input"></div>
+                        <div><label class="label">Jenis Mushaf</label><input type="text" id="orderType" class="form-input"></div>
+                        <div><label class="label">Ukuran</label><input type="text" id="orderSize" class="form-input"></div>
+                        <div><label class="label">Jumlah Pesanan</label><input type="number" id="orderQty" class="form-input"></div>
+                        <div><label class="label">Tanggal Masuk</label><input type="date" id="orderDateIn" class="form-input"></div>
+                        <div><label class="label">Batas Waktu Selesai</label><input type="date" id="orderDateDue" class="form-input"></div>
+                    </div>
+                    <div><label class="label">Catatan Khusus</label><textarea id="orderNotes" class="form-input" rows="3"></textarea></div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="saveOrder()" class="btn btn-primary">💾 Simpan</button>
+                        <button onclick="showPage('orders')" class="btn btn-warning">Batal</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Halaman Detail Pesanan & Produksi -->
+            <div id="pageOrderDetail" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-primary">📋 Detail Pesanan & Produksi</h2>
+                    <button onclick="showPage('orders')" class="btn btn-secondary btn-sm">← Kembali ke Daftar</button>
+                </div>
+                <div id="orderInfo" class="card mb-4"></div>
+                <h3 class="font-bold text-lg mb-2">🔁 Alur Produksi Utama (Tahap 1–7)</h3>
+                <div id="stagesMain" class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6"></div>
+                <h3 class="font-bold text-lg mb-2">📑 Laporan Terpisah (Tahap 8–13)</h3>
+                <div id="stagesSeparate" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+            </div>
+
+            <!-- Halaman Laporan -->
+            <div id="pageReports" class="hidden">
+                <h2 class="text-xl font-bold text-primary mb-4">📊 Laporan Produksi</h2>
+                <div class="card mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                        <label class="label">Jenis Laporan</label>
+                        <select id="rptType" class="form-input" onchange="updateReportOptions()">
+                            <option value="order">Per Pesanan</option>
+                            <option value="stage">Per Tahap/Mesin</option>
+                            <option value="period">Periode Waktu</option>
+                        </select>
+                    </div>
+                    <div id="rptPeriodDiv" class="hidden">
+                        <label class="label">Periode</label>
+                        <select id="rptPeriod" class="form-input">
+                            <option value="daily">Harian</option>
+                            <option value="weekly">Mingguan</option>
+                            <option value="monthly">Bulanan</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label">Rentang Tanggal</label>
+                        <div class="flex gap-1">
+                            <input type="date" id="rptDateFrom" class="form-input">
+                            <input type="date" id="rptDateTo" class="form-input">
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-2 mb-4">
+                    <button onclick="generateReport()" class="btn btn-primary">🔍 Tampilkan Laporan</button>
+                    <button onclick="exportExcel()" class="btn btn-success">📑 Ekspor Excel</button>
+                    <button onclick="window.print()" class="btn btn-info">🖨️ Cetak/PDF</button>
+                </div>
+                <div id="reportResult" class="card"></div>
+            </div>
+
+            <!-- Halaman Pengguna (Admin) -->
+            <div id="pageUsers" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-primary">👥 Pengaturan Pengguna</h2>
+                    <button onclick="showUserForm()" class="btn btn-primary">+ Tambah Operator</button>
+                </div>
+                <div id="userList"></div>
+            </div>
+
+            <!-- Halaman Ubah Kata Sandi -->
+            <div id="pageProfile" class="hidden max-w-md mx-auto">
+                <h2 class="text-xl font-bold text-primary mb-4">🔑 Ubah Kata Sandi</h2>
+                <div class="card space-y-3">
+                    <div><label class="label">Kata Sandi Lama</label><input type="password" id="oldPass" class="form-input"></div>
+                    <div><label class="label">Kata Sandi Baru</label><input type="password" id="newPass" class="form-input"></div>
+                    <div><label class="label">Ulangi Sandi Baru</label><input type="password" id="newPass2" class="form-input"></div>
+                    <button onclick="changePassword()" class="btn btn-primary">Simpan Perubahan</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Form Tahap -->
+    <div id="stageModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-5 w-full max-w-md max-h-[90vh] overflow-auto m-4">
+            <h3 id="stageModalTitle" class="text-lg font-bold mb-4">Data Pengerjaan Tahap</h3>
+            <div class="space-y-3">
+                <input type="hidden" id="modalOrderId">
+                <input type="hidden" id="modalStageNum">
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="label">Waktu Mulai</label><input type="datetime-local" id="modalStart" class="form-input"></div>
+                    <div><label class="label">Waktu Selesai</label><input type="datetime-local" id="modalEnd" class="form-input"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="label">Hasil Bagus</label><input type="number" id="modalGood" class="form-input" value="0"></div>
+                    <div><label class="label">Hasil Cacat</label><input type="number" id="modalDefect" class="form-input" value="0"></div>
+                </div>
+                <div><label class="label">Status</label>
+                    <select id="modalStatus" class="form-input">
+                        <option value="waiting">⏳ Menunggu</option>
+                        <option value="process">🔄 Sedang Diproses</option>
+                        <option value="done">✅ Selesai</option>
+                    </select>
+                </div>
+                <div><label class="label">Catatan / Keterangan</label><textarea id="modalNote" class="form-input" rows="3"></textarea></div>
+                <div class="flex gap-2 mt-3">
+                    <button onclick="saveStageData()" class="btn btn-primary">💾 Simpan & Laporkan</button>
+                    <button onclick="closeStageModal()" class="btn btn-warning">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center text-xs text-gray-500 py-2">Aplikasi Manajemen Produksi Cetak Mushaf Al-Qur'an — Versi 2.0</footer>
+
+<script>
+// =====================================================
+// KONFIGURASI DAN STRUKTUR DATA
+// =====================================================
+
+const STAGES_MAIN = [
+    { no: 1, name: "Cetak Plat Offsheet / CTP" },
+    { no: 2, name: "Mesin Webb Goos" },
+    { no: 3, name: "Mesin Gathering (Penyusun Kateren Mushaf)" },
+    { no: 4, name: "Mesin Jahit Kertas Aster Otomatis" },
+    { no: 5, name: "Mesin Press Manual & Lem Mushaf" },
+    { no: 6, name: "Mesin Potong Kertas Polar (3 Sisi)" },
+    { no: 7, name: "Finishing Aksesoris" }
+];
+
+const STAGES_SEP = [
+    { no: 8, name: "Mesin Sheet Heidelberg (Separasi)" },
+    { no: 9, name: "Mesin Laminating" },
+    { no: 10, name: "Mesin Hard Cover" },
+    { no: 11, name: "Mesin Lem Sekiblat" },
+    { no: 12, name: "Mesin Lipat Kertas Heidelberg" },
+    { no: 13, name: "Mesin Emboss Cover Poly" }
+];
+
+const ALL_STAGES = [...STAGES_MAIN, ...STAGES_SEP];
+
+const DEFAULT_USERS = [
+    { username: "admin", password: "admin123", role: "admin", name: "Administrator", stages: [] },
+    { username: "op1", password: "op12345", role: "operator", name: "Operator 1", stages: [1] },
+    { username: "op2", password: "op12345", role: "operator", name: "Operator 2", stages: [2] },
+    { username: "op3", password: "op12345", role: "operator", name: "Operator 3", stages: [3] },
+    { username: "op4", password: "op12345", role: "operator", name: "Operator 4", stages: [4] },
+    { username: "op5", password: "op12345", role: "operator", name: "Operator 5", stages: [5] },
+    { username: "op6", password: "op12345", role: "operator", name: "Operator 6", stages: [6] },
+    { username: "op7", password: "op12345", role: "operator", name: "Operator 7", stages: [7] },
+    { username: "op8", password: "op12345", role: "operator", name: "Operator 8", stages: [8] },
+    { username: "op9", password: "op12345", role: "operator", name: "Operator 9", stages: [9] },
+    { username: "op10", password: "op12345", role: "operator", name: "Operator 10", stages: [10] },
+    { username: "op11", password: "op12345", role: "operator", name: "Operator 11", stages: [11] },
+    { username: "op12", password: "op12345", role: "operator", name: "Operator 12", stages: [12] },
+    { username: "op13", password: "op12345", role: "operator", name: "Operator 13", stages: [13] }
+];
+
+let DB = { users: [], orders: [], logs: [] };
+let CURRENT_USER = null;
+let CURRENT_ORDER_ID = null;
+
+// =====================================================
+// INISIALISASI APLIKASI
+// =====================================================
+
+function initDB() {
+    const saved = localStorage.getItem('db_produksi_mushaf');
+    if (saved) {
+        try {
+            DB = JSON.parse(saved);
+            if (!DB.users || DB.users.length === 0) {
+                DB.users = [...DEFAULT_USERS];
+            }
+        } catch (e) {
+            DB.users = [...DEFAULT_USERS];
+            DB.orders = [];
+            DB.logs = [];
+        }
+    } else {
+        DB.users = [...DEFAULT_USERS];
+        DB.orders = [];
+        DB.logs = [];
+    }
+    saveDB();
+}
+
+function saveDB() {
+    localStorage.setItem('db_produksi_mushaf', JSON.stringify(DB));
+}
+
+function logAction(action, detail = '') {
+    DB.logs.unshift({
+        time: new Date().toISOString(),
+        user: CURRENT_USER?.username,
+        action,
+        detail
+    });
+    saveDB();
+}
+
+// =====================================================
+// SISTEM LOGIN — DIPERBAIKI
+// =====================================================
+
+function login() {
+    const u = document.getElementById('username').value.trim();
+    const p = document.getElementById('password').value;
+    
+    console.log('Mencoba masuk:', u);
+    console.log('Daftar pengguna:', DB.users);
+    
+    const user = DB.users.find(x => {
+        console.log('Cek:', x.username, '==', u, '->', x.username === u && x.password === p);
+        return x.username === u && x.password === p;
+    });
+    
+    if (!user) {
+        alert('❌ Nama pengguna atau kata sandi salah!\n\nCoba:\nUsername: admin\nSandi: admin123');
+        return;
+    }
+    
+    CURRENT_USER = user;
+    document.getElementById('userInfo').textContent = `${user.name} (${user.role === 'admin' ? 'Admin' : 'Operator'})`;
+    buildMenu();
+    showPage('orders');
+    logAction('LOGIN', 'Berhasil masuk');
+    alert('✅ Selamat datang, ' + user.name + '!');
+}
+
+function buildMenu() {
+    const menu = document.getElementById('mainMenu');
+    let html = `
+        <li class="sidebar-link" onclick="showPage('orders')"><i class="fa fa-list-ul w-5 text-center"></i> Daftar Pesanan</li>
+    `;
+    if (CURRENT_USER?.role === 'admin') {
+        html += `
+            <li class="sidebar-link" onclick="showPage('reports')"><i class="fa fa-bar-chart w-5 text-center"></i> Laporan Produksi</li>
+            <li class="sidebar-link" onclick="showPage('users')"><i class="fa fa-users w-5 text-center"></i> Pengguna Sistem</li>
+        `;
+    }
+    html += `<li class="sidebar-link" onclick="showPage('profile')"><i class="fa fa-key w-5 text-center"></i> Ubah Kata Sandi</li>`;
+    html += `<li class="sidebar-link text-danger mt-4" onclick="logout()"><i class="fa fa-sign-out w-5 text-center"></i> Keluar</li>`;
+    menu.innerHTML = html;
+}
+
+function logout() {
+    CURRENT_USER = null;
+    document.getElementById('mainMenu').innerHTML = '';
+    document.getElementById('userInfo').textContent = 'Belum masuk';
+    showPage('login');
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+}
+
+function showPage(name, param = null) {
+    CURRENT_ORDER_ID = param;
+    document.querySelectorAll('[id^="page"]').forEach(el => el.classList.add('hidden'));
+    const pageEl = document.getElementById(`page${name.charAt(0).toUpperCase() + name.slice(1)}`);
+    if (pageEl) pageEl.classList.remove('hidden');
+    else return;
+    
+    if (name === 'orders') renderOrders();
+    if (name === 'orderDetail' && param) renderOrderDetail(param);
+    if (name === 'users') renderUsers();
+    if (name === 'reports') initReportPage();
+}
+
+// =====================================================
+// FUNGSI PESANAN
+// =====================================================
+
+function showOrderForm(id = null) {
+    if (!CURRENT_USER || CURRENT_USER.role !== 'admin') return alert('❌ Hanya Admin!');
+    document.getElementById('editOrderId').value = id || '';
+    document.getElementById('orderFormTitle').textContent = id ? 'Ubah Data Pesanan' : 'Tambah Pesanan Baru';
+    if (id) {
+        const order = DB.orders.find(x => x.id === id);
+        if (!order) return;
+        document.getElementById('orderNo').value = order.orderNo;
+        document.getElementById('orderClient').value = order.client;
+        document.getElementById('orderType').value = order.type;
+        document.getElementById('orderSize').value = order.size;
+        document.getElementById('orderQty').value = order.qty;
+        document.getElementById('orderDateIn').value = order.dateIn;
+        document.getElementById('orderDateDue').value = order.dateDue;
+        document.getElementById('orderNotes').value = order.notes || '';
+    } else {
+        ['orderNo','orderClient','orderType','orderSize','orderQty','orderNotes'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('orderDateIn').valueAsDate = new Date();
+    }
+    showPage('orderForm');
+}
+
+function saveOrder() {
+    if (!CURRENT_USER || CURRENT_USER.role !== 'admin') return alert('❌ Hanya Admin!');
+    const id = document.getElementById('editOrderId').value;
+    const data = {
+        id: id || 'ORD-' + Date.now(),
+        orderNo: document.getElementById('orderNo').value.trim(),
+        client: document.getElementById('orderClient').value.trim(),
+        type: document.getElementById('orderType').value.trim(),
+        size: document.getElementById('orderSize').value.trim(),
+        qty: parseInt(document.getElementById('orderQty').value) || 0,
+        dateIn: document.getElementById('orderDateIn').value,
+        dateDue: document.getElementById('orderDateDue').value,
+        notes: document.getElementById('orderNotes').value.trim(),
+        stages: {}
+    };
+
+    if (!data.orderNo || !data.client || !data.qty) return alert('❌ Nomor pesanan, pemesan, dan jumlah wajib diisi!');
+
+    if (id) {
+        const idx = DB.orders.findIndex(x => x.id === id);
+        if (idx >= 0) {
+            data.stages = DB.orders[idx].stages;
+            DB.orders[idx] = data;
+        }
+    } else {
+        DB.orders.unshift(data);
+    }
+    saveDB();
+    logAction('SIMPAN_PESANAN', `No. ${data.orderNo}`);
+    showPage('orders');
+}
+
+function deleteOrder(id) {
+    if (!CURRENT_USER || CURRENT_USER.role !== 'admin') return alert('❌ Hanya Admin!');
+    if (!confirm('Yakin ingin MENGHAPUS pesanan ini?')) return;
+    DB.orders = DB.orders.filter(x => x.id !== id);
+    saveDB();
+    renderOrders();
+}
+
+function computeProgress(order) {
+    let done = 0;
+    STAGES_MAIN.forEach(s => {
+        if (order.stages[s.no]?.status === 'done') done++;
+    });
+    return STAGES_MAIN.length > 0 ? Math.round((done / STAGES_MAIN.length) * 100) : 0;
+}
+
+function renderOrders() {
+    const list = document.getElementById('orderList');
+    if (!DB.orders.length) {
+        list.innerHTML = '<p class="text-gray-500 text-center py-6">Belum ada data pesanan.</p>';
+        return;
+    }
+    list.innerHTML = DB.orders.map(o => {
+        const progress = computeProgress(o);
+        const due = new Date(o.dateDue);
+        const now = new Date();
+        const isLate = progress < 100 && due < now;
+        return `
+        <div class="card">
+            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
+                <div class="flex-1">
+                    <span class="font-bold text-lg">${o.orderNo}</span>
+                    <span class="text-sm bg-gray-100 px-2 py-0.5 rounded ml-2">${o.type} — ${o.size}</span>
+                    ${isLate ? '<span class="badge bg-danger ml-2">⚠️ Terlambat!</span>' : ''}
+                    <p class="text-sm text-gray-600 mt-1">Pemesan: ${o.client} • Jumlah: ${o.qty} • Mulai: ${o.dateIn} • Batas: ${o.dateDue}</p>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div class="h-full bg-primary transition-all" style="width:${progress}%"></div>
+                    </div>
+                    <p class="text-xs mt-1">Progress: ${progress}%</p>
+                </div>
+                <div class="flex flex-wrap gap-1">
+                    <button onclick="showPage('orderDetail','${o.id}')" class="btn btn-info btn-sm">📋 Lihat Produksi</button>
+                    ${CURRENT_USER?.role === 'admin' ? `
+                    <button onclick="showOrderForm('${o.id}')" class="btn btn-warning btn-sm">✏️ Ubah</button>
+                    <button onclick="deleteOrder('${o.id}')" class="btn btn-danger btn-sm">🗑️ Hapus</button>
+                    ` : ''}
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// =====================================================
+// DETAIL PESANAN & TAHAP
+// =====================================================
+
+function renderOrderDetail(orderId) {
+    const order = DB.orders.find(x => x.id === orderId);
+    if (!order) return;
+    CURRENT_ORDER_ID = orderId;
+
+    document.getElementById('orderInfo').innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div><span class="font-bold">No. Pesanan:</span> ${order.orderNo}</div>
+            <div><span class="font-bold">Pemesan:</span> ${order.client}</div>
+            <div><span class="font-bold">Jenis/Ukuran:</span> ${order.type} / ${order.size}</div>
+            <div><span class="font-bold">Jumlah:</span> ${order.qty}</div>
+            <div><span class="font-bold">Tgl Masuk:</span> ${order.dateIn}</div>
+            <div><span class="font-bold">Batas Selesai:</span> ${order.dateDue}</div>
+            ${order.notes ? `<div class="md:col-span-2"><span class="font-bold">Catatan:</span> ${order.notes}</div>` : ''}
+        </div>
+    `;
+
+    renderStagesGroup(STAGES_MAIN, 'stagesMain');
+    renderStagesGroup(STAGES_SEP, 'stagesSeparate');
+}
+
+function checkStageLocked(stageNo, order) {
+    if (stageNo >= 8) return false;
+    for (let i = 1; i < stageNo; i++) {
+        if (!order.stages[i] || order.stages[i].status !== 'done') return true;
+    }
+    return false;
+}
+
+function fmtDateTime(s) {
+    if (!s) return '—';
+    return s.replace('T', ' ').substring(0, 16);
+}
+
+function renderStagesGroup(stages, containerId) {
+    const container = document.getElementById(containerId);
+    const order = DB.orders.find(x => x.id === CURRENT_ORDER_ID);
+    if (!order) return;
+
+    container.innerHTML = stages.map(stage => {
+        const data = order.stages[stage.no] || null;
+        const status = data ? data.status : 'waiting';
+        const isLocked = checkStageLocked(stage.no, order);
+        const canEdit = !isLocked && CURRENT_USER && (CURRENT_USER.role === 'admin' || CURRENT_USER.stages?.includes(stage.no));
+        const statusClass = isLocked ? 'stage-locked' : status === 'waiting' ? 'stage-waiting' : status === 'process' ? 'stage-process' : 'stage-done';
+        const statusText = isLocked ? '🔒 Terkunci' : status === 'waiting' ? '⏳ Menunggu' : status === 'process' ? '🔄 Diproses' : '✅ Selesai';
+
+        return `
+        <div class="stage-card ${statusClass}">
+            <div class="flex justify-between items-start mb-2">
+                <span class="font-bold">${stage.no}. ${stage.name}</span>
+                <span class="badge ${status === 'done' ? 'bg-done' : status === 'process' ? 'bg-process' : 'bg-waiting'}">${statusText}</span>
+            </div>
+            ${data ? `
+                <p class="text-sm">Mulai: ${fmtDateTime(data.start)}</p>
+                <p class="text-sm">Selesai: ${fmtDateTime(data.end)}</p>
+                <p class="text-sm">Bagus: ${data.good} • Cacat: ${data.defect}</p>
+                <p class="text-sm">Operator: ${data.operator || '—'}</p>
+                ${data.note ? `<p class="text-sm italic">Catatan: ${data.note}</p>` : ''}
+            ` : '<p class="text-sm text-gray-500">Belum ada data</p>'}
+            ${canEdit ? `<button onclick="openStageModal(${stage.no})" class="btn btn-primary btn-sm mt-2 w-full">✏️ ${data?.status==='done'?'Lihat/Ubah':'Isi Data'}</button>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// =====================================================
+// MODAL TAHAP
+// =====================================================
+
+function openStageModal(stageNo) {
+    const order = DB.orders.find(x => x.id === CURRENT_ORDER_ID);
+    if (!order) return;
+
+    document.getElementById('modalOrderId').value = CURRENT_ORDER_ID;
+    document.getElementById('modalStageNum').value = stageNo;
+    document.getElementById('stageModalTitle').textContent = `Tahap ${stageNo}: ${ALL_STAGES.find(s=>s.no===stageNo).name}`;
+
+    const data = order.stages[stageNo];
+    if (data) {
+        document.getElementById('modalStart').value = data.start || '';
+        document.getElementById('modalEnd').value = data.end || '';
+        document.getElementById('modalGood').value = data.good || 0;
+        document.getElementById('modalDefect').value = data.defect || 0;
+        document.getElementById('modalStatus').value = data.status || 'waiting';
+        document.getElementById('modalNote').value = data.note || '';
+    } else {
+        document.getElementById('modalStart').value = new Date().toISOString().slice(0, 16);
+        document.getElementById('modalEnd').value = '';
+        document.getElementById('modalGood').value = 0;
+        document.getElementById('modalDefect').value = 0;
+        document.getElementById('modalStatus').value = 'process';
+        document.getElementById('modalNote').value = '';
+    }
+
+    if (data?.status === 'done' && CURRENT_USER?.role !== 'admin') {
+        document.querySelectorAll('#stageModal input, #stageModal select, #stageModal textarea').forEach(el => el.disabled = true);
+    } else {
+        document.querySelectorAll('#stageModal input, #stageModal select, #stageModal textarea').forEach(el => el.disabled = false);
+    }
+
+    document.getElementById('stageModal').classList.remove('hidden');
+}
+
+function closeStageModal() {
+    document.getElementById('stageModal').classList.add('hidden');
+}
+
+function saveStageData() {
+    const orderId = document.getElementById('modalOrderId').value;
+    const stageNo = parseInt(document.getElementById('modalStageNum').value);
+    const order = DB.orders.find(x => x.id === orderId);
+    if (!order) return alert('❌ Pesanan tidak ditemukan!');
+
+    const canEdit = CURRENT_USER?.role === 'admin' || CURRENT_USER?.stages?.includes(stageNo);
+    if (!canEdit) return alert('❌ Anda tidak berwenang mengisi tahap ini!');
+    if (checkStageLocked(stageNo, order)) return alert('❌ Tahap sebelumnya belum selesai!');
+
+    order.stages[stageNo] = {
+        start: document.getElementById('modalStart').value,
+        end: document.getElementById('modalEnd').value,
+        good: parseInt(document.getElementById('modalGood').value) || 0,
+        defect: parseInt(document.getElementById('modalDefect').value) || 0,
+        status: document.getElementById('modalStatus').value,
+        note: document.getElementById('modalNote').value,
+        operator: CURRENT_USER.name,
+        updatedAt: new Date().toISOString()
+    };
+
+    saveDB();
+    logAction('SIMPAN_TAHAP', `Pesanan ${order.orderNo} — Tahap ${stageNo}`);
+    alert('✅ Tersimpan! Laporan terkirim ke Admin.');
+    closeStageModal();
+    renderOrderDetail(orderId);
+}
+
+// =====================================================
+// PENGGUNA & LAPORAN
+// =====================================================
+
+function renderUsers() {
+    if (CURRENT_USER?.role !== 'admin') return;
+    const list = document.getElementById('userList');
+    list.innerHTML = `<div class="card space-y-2">${
+        DB.users.map(u => `
+        <div class="flex flex-wrap justify-between items-center border-b py-2 gap-2">
+            <div>
+                <span class="font-bold">${u.name}</span>
+                <span class="text-sm bg-gray-100 px-2 rounded">@${u.username}</span>
+                <span class="badge ${u.role==='admin'?'bg-primary':'bg-secondary'} ml-1">${u.role==='admin'?'Admin':'Operator'}</span>
+                ${u.stages?.length ? `<span class="text-xs ml-2">Tahap: ${u.stages.join(', ')}</span>` : ''}
+            </div>
+            ${u.username!=='admin'?`<button onclick="deleteUser('${u.username}')" class="btn btn-danger btn-sm">🗑️ Hapus</button>`:''}
+        </div>`).join('')
+    }</div>`;
+}
+
+function showUserForm() {
+    if (CURRENT_USER?.role !== 'admin') return;
+    const uname = prompt('Nama pengguna baru:');
+    if (!uname) return;
+    if (DB.users.find(u => u.username === uname)) return alert('❌ Sudah ada!');
+    const name = prompt('Nama lengkap:');
+    const stages = prompt('Tahap yang ditugaskan (pisahkan koma, contoh: 1,2):');
+    const pass = prompt('Kata sandi:', 'op12345') || 'op12345';
+    const stageArr = stages.split(',').map(x=>parseInt(x.trim())).filter(x=>!isNaN(x) && x>=1 && x<=13);
+
+    DB.users.push({ username: uname, password: pass, role: 'operator', name: name || uname, stages: stageArr });
+    saveDB();
+    renderUsers();
+}
+
+function deleteUser(username) {
+    if (username === 'admin') return alert('❌ Tidak dapat dihapus!');
+    if (!confirm('Yakin hapus?')) return;
+    DB.users = DB.users.filter(u => u.username !== username);
+    saveDB();
+    renderUsers();
+}
+
+function changePassword() {
+    const oldPass = document.getElementById('oldPass').value;
+    const newPass = document.getElementById('newPass').value;
+    const newPass2 = document.getElementById('newPass2').value;
+
+    if (CURRENT_USER.password !== oldPass) return alert('❌ Sandi lama salah!');
+    if (newPass !== newPass2) return alert('❌ Ketikan tidak sama!');
+    if (newPass.length < 4) return alert('❌ Terlalu pendek!');
+
+    const u = DB.users.find(x => x.username === CURRENT_USER.username);
+    if (u) { u.password = newPass; CURRENT_USER.password = newPass; saveDB(); alert('✅ Diubah!'); }
+}
+
+function initReportPage() {
+    document.getElementById('rptDateFrom').valueAsDate = new Date(Date.now() - 30*86400000);
+    document.getElementById('rptDateTo').valueAsDate = new Date();
+}
+
+function updateReportOptions() {
+    document.getElementById('rptPeriodDiv').classList.toggle('hidden', document.getElementById('rptType').value !== 'period');
+}
+
+let REPORT_DATA = [];
+function generateReport() {
+    REPORT_DATA = [];
+    const type = document.getElementById('rptType').value;
+    const from = document.getElementById('rptDateFrom').value;
+    const to = document.getElementById('rptDateTo').value;
+    let html = '<div class="overflow-x-auto"><table class="w-full border-collapse text-sm">';
+
+    if (type === 'order') {
+        html += '<thead class="bg-gray-100"><tr><th class="border p-2">No.Pesanan</th><th class="border p-2">Pemesan</th><th class="border p-2">Tahap</th><th class="border p-2">Status</th><th class="border p-2">Bagus</th><th class="border p-2">Cacat</th><th class="border p-2">Operator</th><th class="border p-2">Tgl Selesai</th></tr></thead><tbody>';
+        DB.orders.forEach(o => {
+            Object.entries(o.stages).forEach(([no, d]) => {
+                const st = ALL_STAGES.find(s=>s.no==no)?.name || no;
+                const stt = d.status==='done'?'Selesai':d.status==='process'?'Proses':'Menunggu';
+                const row = [o.orderNo, o.client, `${no}. ${st.substring(0,15)}`, stt, d.good, d.defect, d.operator||'—', fmtDateTime(d.end)];
+                REPORT_DATA.push(row);
+                html += '<tr>' + row.map(c=>`<td class="border p-2">${c}</td>`).join('') + '</tr>';
+            });
+        });
+    } else if (type === 'stage') {
+        html += '<thead class="bg-gray-100"><tr><th class="border p-2">Tahap</th><th class="border p-2">Pesanan</th><th class="border p-2">Bagus</th><th class="border p-2">Cacat</th><th class="border p-2">Total</th><th class="border p-2">% Cacat</th><th class="border p-2">Operator</th></tr></thead><tbody>';
+        DB.orders.forEach(o => {
+            Object.entries(o.stages).forEach(([no, d]) => {
+                if (d.status === 'done') {
+                    const total = d.good + d.defect;
+                    const pct = total>0 ? ((d.defect/total)*100).toFixed(1) : '0';
+                    const st = ALL_STAGES.find(s=>s.no==no)?.name || no;
+                    const row = [`${no}. ${st.substring(0,15)}`, o.orderNo, d.good, d.defect, total, pct+'%', d.operator];
+                    REPORT_DATA.push(row);
+                    html += '<tr>' + row.map(c=>`<td class="border p-2">${c}</td>`).join('') + '</tr>';
+                }
+            });
+        });
+    } else {
+        html += '<thead class="bg-gray-100"><tr><th class="border p-2">Tanggal</th><th class="border p-2">Pesanan</th><th class="border p-2">Tahap</th><th class="border p-2">Bagus</th><th class="border p-2">Cacat</th><th class="border p-2">Operator</th></tr></thead><tbody>';
+        DB.orders.forEach(o => {
+            Object.entries(o.stages).forEach(([no, d]) => {
+                const dt = (d.end||'').substring(0,10);
+                if (dt >= from && dt <= to) {
+                    const st = ALL_STAGES.find(s=>s.no==no)?.name || no;
+                    const row = [dt, o.orderNo, `${no}. ${st.substring(0,15)}`, d.good, d.defect, d.operator];
+                    REPORT_DATA.push(row);
+                    html += '<tr>' + row.map(c=>`<td class="border p-2">${c}</td>`).join('') + '</tr>';
+                }
+            });
+        });
+    }
+    html += '</tbody></table></div>';
+    document.getElementById('reportResult').innerHTML = html || '<p class="text-gray-500">Tidak ada data.</p>';
+}
+
+function exportExcel() {
+    generateReport();
+    if (!REPORT_DATA.length) return alert('❌ Tidak ada data!');
+    const ws = XLSX.utils.aoa_to_sheet(REPORT_DATA);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Laporan");
+    XLSX.writeFile(wb, `Laporan-Produksi-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// =====================================================
+// MULAI APLIKASI
+// =====================================================
+window.onload = () => {
+    initDB();
+    // Pastikan akun admin selalu ada
+    const ensureAdmin = DB.users.find(u => u.username === 'admin');
+    if (!ensureAdmin) {
+        DB.users.unshift(DEFAULT_USERS[0]);
+        saveDB();
+    }
+};
+</script>
+</body>
+</html>
